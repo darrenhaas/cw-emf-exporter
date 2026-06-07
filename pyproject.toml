@@ -1,0 +1,64 @@
+[project]
+name = "opentelemetry-exporter-cloudwatch-emf"
+version = "0.2.4"
+description = "OpenTelemetry metrics exporter for AWS CloudWatch using Embedded Metric Format (EMF)"
+authors = [{name = "Darren Haas", email = "mail+pypi@darrenhaas.com"}]
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+]
+keywords = ["opentelemetry", "cloudwatch", "emf", "metrics", "aws", "observability"]
+dependencies = [
+    "opentelemetry-sdk>=1.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "twine>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/darrenhaas/cw-emf-exporter"
+Repository = "https://github.com/darrenhaas/cw-emf-exporter"
+Issues = "https://github.com/darrenhaas/cw-emf-exporter/issues"
+Notice = "https://github.com/darrenhaas/cw-emf-exporter/blob/main/docs/NOTICE.md"
+
+[build-system]
+requires = ["setuptools>=77.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
