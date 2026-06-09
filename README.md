@@ -1,6 +1,6 @@
 # OpenTelemetry CloudWatch EMF Exporter
 
-[![PyPI](https://img.shields.io/pypi/v/opentelemetry-exporter-cloudwatch-emf.svg)](https://pypi.org/project/opentelemetry-exporter-cloudwatch-emf/)
+[![PyPI](https://img.shields.io/badge/pypi-v0.2.5-blue)](https://pypi.org/project/opentelemetry-exporter-cloudwatch-emf/0.2.5/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/opentelemetry-exporter-cloudwatch-emf.svg)](https://pypi.org/project/opentelemetry-exporter-cloudwatch-emf/)
 [![License](https://img.shields.io/pypi/l/opentelemetry-exporter-cloudwatch-emf.svg)](LICENSE)
 
