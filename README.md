@@ -32,7 +32,7 @@ pip install opentelemetry-exporter-cloudwatch-emf
 To install a specific source release from GitHub:
 
 ```bash
-pip install git+ssh://git@github.com/darrenhaas/cw-emf-exporter.git@v0.2.4
+pip install git+ssh://git@github.com/darrenhaas/cw-emf-exporter.git@v0.2.5
 ```
 
 ## Quick Start
@@ -179,6 +179,7 @@ uv run pytest
 # Lint, type check, and package validation
 uv run flake8 src tests
 uv run mypy src
+uv run isort --check-only src tests
 uv run black --check src tests
 uv build
 uv run twine check dist/*

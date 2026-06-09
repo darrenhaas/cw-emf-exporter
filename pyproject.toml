@@ -1,6 +1,6 @@
 [project]
 name = "opentelemetry-exporter-cloudwatch-emf"
-version = "0.2.4"
+version = "0.2.5"
 description = "OpenTelemetry metrics exporter for AWS CloudWatch using Embedded Metric Format (EMF)"
 authors = [{name = "Darren Haas", email = "mail+pypi@darrenhaas.com"}]
 readme = "README.md"

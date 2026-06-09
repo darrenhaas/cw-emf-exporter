@@ -2,6 +2,7 @@
 
 import io
 import json
+import math
 import os
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
@@ -26,14 +27,21 @@ class TestUnitMapping:
 
     def test_byte_units(self):
         assert map_unit("By") == "Bytes"
+        assert map_unit("KBy") == "Kilobytes"
         assert map_unit("KiBy") == "Kilobytes"
+        assert map_unit("MBy") == "Megabytes"
         assert map_unit("MiBy") == "Megabytes"
+        assert map_unit("GBy") == "Gigabytes"
         assert map_unit("GiBy") == "Gigabytes"
+        assert map_unit("TBy") == "Terabytes"
 
     def test_count_units(self):
         assert map_unit("1") == "Count"
         assert map_unit("{request}") == "Count"
+        assert map_unit("{requests}") == "Count"
         assert map_unit("{error}") == "Count"
+        assert map_unit("{errors}") == "Count"
+        assert map_unit("{operation}") == "Count"
 
     def test_percent_unit(self):
         assert map_unit("%") == "Percent"
@@ -337,6 +345,22 @@ class TestEMFDocumentGeneration:
         metrics = emf["_aws"]["CloudWatchMetrics"][0]["Metrics"][0]
         assert metrics["StorageResolution"] == 1
 
+    def test_metric_name_dimension_collision_drops_dimension(self):
+        output = io.StringIO()
+        exporter = self.create_exporter(output)
+
+        emf = exporter._build_emf_document(
+            metric_name="latency",
+            metric_value=50,
+            metric_unit="ms",
+            dimensions={"latency": "dimension-value", "service": "api"},
+        )
+
+        cw_metrics = emf["_aws"]["CloudWatchMetrics"][0]
+        assert cw_metrics["Dimensions"] == [["service"]]
+        assert emf["latency"] == 50
+        assert emf["service"] == "api"
+
 
 class TestDimensionHandling:
     """Test dimension building and sanitization."""
@@ -392,6 +416,23 @@ class TestDimensionHandling:
         )
 
         assert len(dimensions) == 2
+
+    def test_max_dimensions_prefers_point_attributes(self):
+        output = io.StringIO()
+        exporter = CloudWatchEMFExporter(
+            namespace="Test",
+            output=output,
+            max_dimensions=2,
+            auto_detect_aws=False,
+        )
+        exporter._aws_env_attrs = {"aws_region": "us-west-2"}
+
+        dimensions = exporter._build_dimensions(
+            point_attrs={"operation": "checkout", "status": "ok"},
+            resource_attrs={"service": "api"},
+        )
+
+        assert dimensions == {"operation": "checkout", "status": "ok"}
 
 
 class TestExportFlow:
@@ -475,6 +516,28 @@ class TestExportFlow:
         assert emf["_aws"]["Timestamp"] == 1700000000000
         assert emf["_aws"]["CloudWatchMetrics"][0]["Namespace"] == "TestApp"
         assert emf["request_count"] == 42
+
+    @pytest.mark.parametrize("value", [math.inf, -math.inf, math.nan])
+    def test_export_skips_non_finite_metric_values(self, value: float):
+        output = io.StringIO()
+        exporter = CloudWatchEMFExporter(
+            namespace="TestApp",
+            output=output,
+            timestamp_fn=lambda: 1700000000000,
+            auto_detect_aws=False,
+        )
+
+        metrics_data = self.create_mock_metrics_data(
+            metric_name="temperature",
+            metric_value=value,
+        )
+
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        result = exporter.export(metrics_data)
+
+        assert result == MetricExportResult.SUCCESS
+        assert output.getvalue() == ""
 
     def test_export_after_shutdown_fails(self):
         output = io.StringIO()
@@ -693,6 +756,36 @@ class TestHistogramExportDerived:
             # Should not contain None values as metric values
             assert "latency_count" not in emf or emf.get("latency_count") != 0
 
+    def test_histogram_derived_skips_non_finite_values(self):
+        output = io.StringIO()
+        exporter = CloudWatchEMFExporter(
+            namespace="TestApp",
+            output=output,
+            timestamp_fn=lambda: 1700000000000,
+            histogram_as_values=False,
+            auto_detect_aws=False,
+        )
+
+        metrics_data = self.create_mock_histogram_data(
+            count=2,
+            sum_value=math.inf,
+            min_value=math.nan,
+            max_value=10.0,
+        )
+
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        result = exporter.export(metrics_data)
+        assert result == MetricExportResult.SUCCESS
+
+        output.seek(0)
+        emf = json.loads(output.readline())
+
+        assert "latency_count" in emf
+        assert "latency_sum" not in emf
+        assert "latency_min" not in emf
+        assert emf["latency_max"] == 10.0
+
 
 class TestHistogramExportValues:
     """Test histogram export with Values arrays for percentile support."""
@@ -799,6 +892,23 @@ class TestHistogramExportValues:
         assert len(values) == len(counts)
         # All counts should be positive
         assert all(c > 0 for c in counts)
+
+    def test_histogram_no_bucket_fallback_requires_min_and_max(self):
+        output = io.StringIO()
+        exporter = CloudWatchEMFExporter(
+            namespace="TestApp",
+            output=output,
+            auto_detect_aws=False,
+        )
+
+        data_point = MagicMock()
+        data_point.count = 2
+        data_point.min = 5.0
+        data_point.max = None
+        data_point.bucket_counts = None
+        data_point.explicit_bounds = None
+
+        assert exporter._histogram_to_values_counts(data_point) == ([], [])
 
     def test_histogram_values_mode_expands_counts(self):
         output = io.StringIO()

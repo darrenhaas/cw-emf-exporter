@@ -10,6 +10,7 @@ uv sync --extra dev
 uv run pytest
 uv run mypy src
 uv run flake8 src tests
+uv run isort --check-only src tests
 uv run black --check src tests
 uv build
 uv run twine check dist/*

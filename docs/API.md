@@ -261,9 +261,13 @@ CloudWatch unit string. Returns `"None"` for unknown units.
 | `us` | `Microseconds` |
 | `ns` | `Microseconds` |
 | `By` | `Bytes` |
+| `KBy` | `Kilobytes` |
 | `KiBy` | `Kilobytes` |
+| `MBy` | `Megabytes` |
 | `MiBy` | `Megabytes` |
+| `GBy` | `Gigabytes` |
 | `GiBy` | `Gigabytes` |
+| `TBy` | `Terabytes` |
 | `TiBy` | `Terabytes` |
 | `bit` | `Bits` |
 | `Kibit` | `Kilobits` |
@@ -282,7 +286,10 @@ CloudWatch unit string. Returns `"None"` for unknown units.
 | `Tibit/s` | `Terabits/Second` |
 | `1` | `Count` |
 | `{request}` | `Count` |
+| `{requests}` | `Count` |
 | `{error}` | `Count` |
+| `{errors}` | `Count` |
+| `{operation}` | `Count` |
 | `{packet}` | `Count` |
 | `{connection}` | `Count` |
 | `%` | `Percent` |

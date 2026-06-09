@@ -8,17 +8,20 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, TextIO, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, TextIO, Tuple
 from urllib.error import URLError
 from urllib.request import urlopen
 
 from opentelemetry.sdk.metrics._internal.instrument import (
     Counter,
-    Histogram as HistogramInstrument,
+)
+from opentelemetry.sdk.metrics._internal.instrument import Histogram as HistogramInstrument
+from opentelemetry.sdk.metrics._internal.instrument import (
     ObservableCounter,
     ObservableGauge,
     ObservableUpDownCounter,
@@ -296,6 +299,10 @@ class CloudWatchEMFExporter(MetricExporter):
             value = point.value
             metric_name = _sanitize_metric_name(metric.name)
 
+            if not self._is_valid_emf_number(value):
+                logger.warning("Skipping non-finite metric value for %s", metric_name)
+                continue
+
             emf = self._build_emf_document(
                 metric_name=metric_name,
                 metric_value=value,
@@ -345,6 +352,7 @@ class CloudWatchEMFExporter(MetricExporter):
             return
 
         cw_unit = map_unit(metric_unit)
+        dimensions = self._filter_metric_name_collisions(dimensions, [metric_name])
         dimension_keys = list(dimensions.keys())
 
         emf: Dict[str, Any] = {
@@ -387,7 +395,14 @@ class CloudWatchEMFExporter(MetricExporter):
 
         if not point.bucket_counts or not point.explicit_bounds:
             # No bucket data, use min/max/sum if available
-            if point.min is not None and point.count and point.count > 0:
+            if (
+                point.min is not None
+                and point.max is not None
+                and self._is_valid_emf_number(point.min)
+                and self._is_valid_emf_number(point.max)
+                and point.count
+                and point.count > 0
+            ):
                 # Use min and max as representative values
                 if point.min == point.max:
                     values.append(point.min)
@@ -422,6 +437,9 @@ class CloudWatchEMFExporter(MetricExporter):
                 # Middle bucket: (bounds[i-1], bounds[i])
                 midpoint = (bounds[i - 1] + bounds[i]) / 2
 
+            if not self._is_valid_emf_number(midpoint):
+                continue
+
             values.append(midpoint)
             counts.append(count)
 
@@ -438,21 +456,21 @@ class CloudWatchEMFExporter(MetricExporter):
         metrics_list = []
         values: Dict[str, float] = {}
 
-        if point.count is not None and point.count > 0:
+        if point.count is not None and self._is_valid_emf_number(point.count) and point.count > 0:
             metrics_list.append({"Name": f"{metric_name}_count", "Unit": "Count"})
             values[f"{metric_name}_count"] = point.count
 
-        if point.sum is not None:
+        if point.sum is not None and self._is_valid_emf_number(point.sum):
             unit = map_unit(metric_unit)
             metrics_list.append({"Name": f"{metric_name}_sum", "Unit": unit})
             values[f"{metric_name}_sum"] = point.sum
 
-        if point.min is not None:
+        if point.min is not None and self._is_valid_emf_number(point.min):
             unit = map_unit(metric_unit)
             metrics_list.append({"Name": f"{metric_name}_min", "Unit": unit})
             values[f"{metric_name}_min"] = point.min
 
-        if point.max is not None:
+        if point.max is not None and self._is_valid_emf_number(point.max):
             unit = map_unit(metric_unit)
             metrics_list.append({"Name": f"{metric_name}_max", "Unit": unit})
             values[f"{metric_name}_max"] = point.max
@@ -692,24 +710,26 @@ class CloudWatchEMFExporter(MetricExporter):
         resource_attrs: Dict[str, Any],
     ) -> Dict[str, str]:
         """Build dimensions from point and resource attributes."""
-        # Combine resource and point attributes
-        all_attrs: Dict[str, Any] = {}
+        point_attr_dict = dict(point_attrs) if point_attrs else {}
+        attr_sources: List[Mapping[str, Any]] = [
+            point_attr_dict,
+            resource_attrs,
+            self._aws_env_attrs,
+        ]
 
-        # Add auto-detected AWS environment attributes first
-        all_attrs.update(self._aws_env_attrs)
-
-        # Then add resource attributes
-        all_attrs.update(resource_attrs)
-
-        # Then add point attributes (highest priority)
-        if point_attrs:
-            all_attrs.update(dict(point_attrs))
-
-        # Filter to dimension keys if specified
         if self._dimension_keys:
-            filtered = {k: v for k, v in all_attrs.items() if k in self._dimension_keys}
+            filtered = {}
+            for key in self._dimension_keys:
+                for source in attr_sources:
+                    if key in source:
+                        filtered[key] = source[key]
+                        break
         else:
-            filtered = all_attrs
+            filtered = {}
+            for source in attr_sources:
+                for key, value in source.items():
+                    if key not in filtered:
+                        filtered[key] = value
 
         # Convert to strings and limit count
         dimensions: Dict[str, str] = {}
@@ -748,6 +768,7 @@ class CloudWatchEMFExporter(MetricExporter):
     ) -> Dict[str, Any]:
         """Build a single-metric EMF document."""
         cw_unit = map_unit(metric_unit)
+        dimensions = self._filter_metric_name_collisions(dimensions, [metric_name])
         dimension_keys = list(dimensions.keys())
 
         emf: Dict[str, Any] = {
@@ -785,6 +806,7 @@ class CloudWatchEMFExporter(MetricExporter):
         dimensions: Dict[str, str],
     ) -> Dict[str, Any]:
         """Build an EMF document with multiple metrics (for histograms)."""
+        dimensions = self._filter_metric_name_collisions(dimensions, values.keys())
         dimension_keys = list(dimensions.keys())
 
         # Add storage resolution to each metric
@@ -816,9 +838,22 @@ class CloudWatchEMFExporter(MetricExporter):
 
     def _write_emf(self, emf: Dict[str, Any]) -> None:
         """Write EMF document to output."""
-        line = json.dumps(emf, separators=(",", ":"))
+        line = json.dumps(emf, separators=(",", ":"), allow_nan=False)
         self._output.write(line + "\n")
         self._output.flush()
+
+    def _is_valid_emf_number(self, value: Any) -> bool:
+        """Return True when value can be emitted as a valid JSON number."""
+        return isinstance(value, (int, float)) and math.isfinite(value)
+
+    def _filter_metric_name_collisions(
+        self,
+        dimensions: Dict[str, str],
+        metric_names: Iterable[str],
+    ) -> Dict[str, str]:
+        """Drop dimensions that would overwrite metric values in the EMF document."""
+        metric_name_set = set(metric_names)
+        return {key: value for key, value in dimensions.items() if key not in metric_name_set}
 
     def force_flush(self, timeout_millis: float = 10000) -> bool:
         """Flush any buffered data.
