@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.5
+
+- Skip non-finite metric values so EMF output remains valid JSON for
+  CloudWatch ingestion.
+- Drop dimensions that would collide with emitted metric names.
+- Preserve point attribute priority when `max_dimensions` caps dimension count.
+- Enforce import ordering in CI and release checks.
+- Complete the API unit mapping table.
+
 ## 0.2.4
 
 Initial public release.

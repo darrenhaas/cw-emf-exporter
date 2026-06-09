@@ -23,4 +23,4 @@ Example usage:
 from opentelemetry_exporter_cloudwatch_emf.exporter import CloudWatchEMFExporter
 
 __all__ = ["CloudWatchEMFExporter"]
-__version__ = "0.2.4"
+__version__ = "0.2.5"
